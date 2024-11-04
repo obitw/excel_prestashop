@@ -22,13 +22,10 @@ function uploadExcelFile() {
 
 // Charger et lire les colonnes du fichier Excel
 function loadExcelColumns($filePath) {
-    if ($filePath) {
-        $spreadsheet = IOFactory::load($filePath);
-        $sheet = $spreadsheet->getActiveSheet();
-        $columns = $sheet->getSheetDimension()->getColumns();
-        return $columns;
-    }
-    return [];
+    $spreadsheet = IOFactory::load($filePath);
+    $sheet = $spreadsheet->getActiveSheet();
+    $columns = $sheet->getSheetDimension()->getColumns();
+    return $columns;
 }
 
 // Appel API pour la recherche d'images
@@ -60,8 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $filePath = uploadExcelFile();
         if ($filePath) {
             $_SESSION['columns'] = loadExcelColumns($filePath);
-        } else {
-            echo "Erreur : Le fichier n'a pas pu être téléchargé.";
         }
     }
 
@@ -72,39 +67,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Étape 3 et 4: Rechercher et sélectionner des images
     if (isset($_POST['searchImages'])) {
-        if (isset($_SESSION['filePath'])) {
-            $filePath = $_SESSION['filePath'];
-            $spreadsheet = IOFactory::load($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
-            $column = $_SESSION['selectedColumn'];
+        $filePath = $_SESSION['filePath'];
+        $spreadsheet = IOFactory::load($filePath);
+        $sheet = $spreadsheet->getActiveSheet();
+        $column = $_SESSION['selectedColumn'];
 
-            $rowCount = $sheet->getHighestRow();
-            for ($row = 2; $row <= $rowCount; $row++) {
-                $value = $sheet->getCellByColumnAndRow($column, $row)->getValue();
-                $images = searchImages($value);
-                $_SESSION['images'][$value] = $images;
-            }
-        } else {
-            echo "Erreur : Aucun fichier chargé.";
+        $rowCount = $sheet->getHighestRow();
+        for ($row = 2; $row <= $rowCount; $row++) {
+            $value = $sheet->getCellByColumnAndRow($column, $row)->getValue();
+            $images = searchImages($value);
+            $_SESSION['images'][$value] = $images;
         }
     }
 
     // Étape 5: Ajouter les URLs au fichier
     if (isset($_POST['addUrls'])) {
-        if (isset($_SESSION['filePath'])) {
-            $spreadsheet = IOFactory::load($_SESSION['filePath']);
-            $sheet = $spreadsheet->getActiveSheet();
-            $column = $sheet->getHighestColumn() + 1;
+        $spreadsheet = IOFactory::load($_SESSION['filePath']);
+        $sheet = $spreadsheet->getActiveSheet();
+        $column = $sheet->getHighestColumn() + 1;
 
-            foreach ($_SESSION['images'] as $value => $urls) {
-                $row = array_search($value, $_SESSION['images']);
-                $sheet->setCellValueByColumnAndRow($column, $row, $urls[0]);
-            }
-
-            downloadExcelFile($spreadsheet);
-        } else {
-            echo "Erreur : Aucun fichier chargé pour ajouter les URLs.";
+        foreach ($_SESSION['images'] as $value => $urls) {
+            $row = array_search($value, $_SESSION['images']);
+            $sheet->setCellValueByColumnAndRow($column, $row, $urls[0]);
         }
+
+        downloadExcelFile($spreadsheet);
     }
 }
 ?>
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion d'Images Excel</title>
+</head>
+<body>
+
+<h1>Gestion d'Images pour Fichier Excel</h1>
+
+<!-- Formulaire d'importation -->
+<form method="POST" enctype="multipart/form-data">
+    <label>Importer un fichier Excel:</label>
+    <input type="file" name="excelFile" accept=".xlsx,.xls">
+    <button type="submit" name="upload">Télécharger</button>
+</form>
+
+<?php if (isset($_SESSION['columns'])): ?>
+    <!-- Sélection de colonne -->
+    <form method="POST">
+        <label>Sélectionner une colonne:</label>
+        <select name="column">
+            <?php foreach ($_SESSION['columns'] as $colName): ?>
+                <option value="<?= $colName ?>"><?= $colName ?></option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" name="selectColumn">Choisir</button>
+    </form>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['selectedColumn'])): ?>
+    <!-- Recherche d'images -->
+    <form method="POST">
+        <button type="submit" name="searchImages">Rechercher les images</button>
+    </form>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['images'])): ?>
+    <!-- Sélection des images et téléchargement -->
+    <form method="POST">
+        <?php foreach ($_SESSION['images'] as $value => $images): ?>
+            <h3><?= htmlspecialchars($value) ?></h3>
+            <?php foreach ($images as $url): ?>
+                <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" value="<?= htmlspecialchars($url) ?>">
+                <img src="<?= htmlspecialchars($url) ?>" width="100">
+            <?php endforeach; ?>
+        <?php endforeach; ?>
+        <button type="submit" name="addUrls">Télécharger le fichier Excel modifié</button>
+    </form>
+<?php endif; ?>
+
+</body>
+</html>
