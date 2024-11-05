@@ -52,10 +52,10 @@ function searchImages($query) {
 // Télécharger le fichier Excel modifié
 function downloadExcelFile($spreadsheet) {
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment;filename="updated_file.xlsx"');
+    header('Content-Disposition: attachment;filename="updated_file.xls"');
     header('Cache-Control: max-age=0');
 
-    $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer = IOFactory::createWriter($spreadsheet, 'Xls');
     $writer->save('php://output');
     exit;
 }
@@ -99,15 +99,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['addUrls'])) {
         $spreadsheet = IOFactory::load($_SESSION['filePath']);
         $sheet = $spreadsheet->getActiveSheet();
-        $column = $sheet->getHighestColumn() + 1;
+
+        // Determine the new column letter for URLs
+        $highestColumn = $sheet->getHighestColumn();
+        $newColumnIndex = Coordinate::columnIndexFromString($highestColumn) + 1;
+        $newColumnLetter = Coordinate::stringFromColumnIndex($newColumnIndex);
+
+        // Add "Image URL" as the header for the new column
+        $sheet->setCellValue("{$newColumnLetter}1", "Image URL");
+
+        // Loop through rows to add URLs
+        $selectedColumnLetter = Coordinate::stringFromColumnIndex($_SESSION['selectedColumn']);
+        $rowCount = $sheet->getHighestRow();
 
         foreach ($_SESSION['images'] as $value => $urls) {
-            $row = array_search($value, $_SESSION['images']);
-            $sheet->setCellValueByColumnAndRow($column, $row, $urls[0]);
+            for ($row = 2; $row <= $rowCount; $row++) {
+                $cellReference = $selectedColumnLetter . $row;
+                $cellValue = $sheet->getCell($cellReference)->getValue();
+
+                // If the cell value matches, add the image URL in the new column
+                if ($cellValue === $value) {
+                    $newCellReference = "{$newColumnLetter}{$row}";
+                    $sheet->setCellValue($newCellReference, $urls[0]);
+                    break;
+                }
+            }
         }
 
         downloadExcelFile($spreadsheet);
+        session_unset();
     }
+
 }
 ?>
 
