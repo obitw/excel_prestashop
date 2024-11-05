@@ -1,6 +1,7 @@
 <?php
 session_start();
 require 'vendor/autoload.php'; // Charger PhpSpreadsheet
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
@@ -24,14 +25,22 @@ function uploadExcelFile() {
 function loadExcelColumns($filePath) {
     $spreadsheet = IOFactory::load($filePath);
     $sheet = $spreadsheet->getActiveSheet();
-    $columns = $sheet->getSheetDimension()->getColumns();
+    $highestColumn = $sheet->getHighestColumn();
+    $highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
+
+    $columns = [];
+    for ($col = 1; $col <= $highestColumnIndex; $col++) {
+        $columnLetter = Coordinate::stringFromColumnIndex($col);
+        $columns[] = $sheet->getCell($columnLetter . '1')->getValue(); // Récupère les valeurs des en-têtes de colonnes
+    }
+
     return $columns;
 }
 
 // Appel API pour la recherche d'images
 function searchImages($query) {
-    $apiKey = 'VOTRE_API_KEY';
-    $searchEngineId = 'VOTRE_SEARCH_ENGINE_ID';
+    $apiKey = 'AIzaSyCnuwZF4W5rat_nTKYmmTgjrFUBMMJ1eTQ';
+    $searchEngineId = '06fde62a230154792';
     $url = "https://www.googleapis.com/customsearch/v1?key=$apiKey&cx=$searchEngineId&q=" . urlencode($query) . "&searchType=image&num=3";
 
     $response = file_get_contents($url);
