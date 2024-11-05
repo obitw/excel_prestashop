@@ -39,8 +39,8 @@ function loadExcelColumns($filePath) {
 
 // Appel API pour la recherche d'images
 function searchImages($query) {
-    $apiKey = 'AIzaSyCnuwZF4W5rat_nTKYmmTgjrfUBMMJleTQ';
-    $searchEngineId = '33985579b2a1f482d';
+    $apiKey = 'AIzaSyDilVFvhQhGrHM9XfCbp5DU2Jj9jaTYBJM';
+    $searchEngineId = 'e4aa36cca289940cf';
     $url = "https://www.googleapis.com/customsearch/v1?key=$apiKey&cx=$searchEngineId&q=" . urlencode($query) . "&searchType=image&num=3";
 
     $response = file_get_contents($url);
@@ -108,19 +108,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Add "Image URL" as the header for the new column
         $sheet->setCellValue("{$newColumnLetter}1", "Image URL");
 
-        // Loop through rows to add URLs
+        // Loop through rows to add selected URLs
         $selectedColumnLetter = Coordinate::stringFromColumnIndex($_SESSION['selectedColumn']);
         $rowCount = $sheet->getHighestRow();
 
-        foreach ($_SESSION['images'] as $value => $urls) {
+        foreach ($_POST['selectedImage'] as $value => $selectedUrl) {
             for ($row = 2; $row <= $rowCount; $row++) {
                 $cellReference = $selectedColumnLetter . $row;
                 $cellValue = $sheet->getCell($cellReference)->getValue();
 
-                // If the cell value matches, add the image URL in the new column
+                // If the cell value matches, add the selected image URL in the new column
                 if ($cellValue === $value) {
                     $newCellReference = "{$newColumnLetter}{$row}";
-                    $sheet->setCellValue($newCellReference, $urls[0]);
+                    $sheet->setCellValue($newCellReference, $selectedUrl);
                     break;
                 }
             }
@@ -129,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         downloadExcelFile($spreadsheet);
         session_unset();
     }
+
 
 }
 ?>
