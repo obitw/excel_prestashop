@@ -39,14 +39,15 @@ function loadExcelColumns($filePath) {
 
 // Appel API pour la recherche d'images
 function searchImages($query) {
-    $apiKey = 'AIzaSyCnuwZF4W5rat_nTKYmmTgjrFUBMMJ1eTQ';
-    $searchEngineId = '06fde62a230154792';
+    $apiKey = 'AIzaSyCnuwZF4W5rat_nTKYmmTgjrfUBMMJleTQ';
+    $searchEngineId = '33985579b2a1f482d';
     $url = "https://www.googleapis.com/customsearch/v1?key=$apiKey&cx=$searchEngineId&q=" . urlencode($query) . "&searchType=image&num=3";
 
     $response = file_get_contents($url);
     $data = json_decode($response, true);
     return array_column($data['items'], 'link'); // Récupère les URLs des images
 }
+
 
 // Télécharger le fichier Excel modifié
 function downloadExcelFile($spreadsheet) {
@@ -79,15 +80,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $filePath = $_SESSION['filePath'];
         $spreadsheet = IOFactory::load($filePath);
         $sheet = $spreadsheet->getActiveSheet();
-        $column = $_SESSION['selectedColumn'];
+        $columnIndex = $_SESSION['selectedColumn']; // Index de la colonne sélectionnée
 
         $rowCount = $sheet->getHighestRow();
         for ($row = 2; $row <= $rowCount; $row++) {
-            $value = $sheet->getCellByColumnAndRow($column, $row)->getValue();
+            // Convertit l'index de colonne en lettre de colonne
+            $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($columnIndex);
+            // Récupère la valeur de la cellule (par exemple, A2, B2, etc.)
+            $value = $sheet->getCell($columnLetter . $row)->getValue();
+
             $images = searchImages($value);
             $_SESSION['images'][$value] = $images;
         }
     }
+
 
     // Étape 5: Ajouter les URLs au fichier
     if (isset($_POST['addUrls'])) {
@@ -119,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <form method="POST" enctype="multipart/form-data">
     <label>Importer un fichier Excel:</label>
     <input type="file" name="excelFile" accept=".xlsx,.xls">
-    <button type="submit" name="upload">Télécharger</button>
+    <button type="submit" name="upload">Importer</button>
 </form>
 
 <?php if (isset($_SESSION['columns'])): ?>
@@ -127,12 +133,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <form method="POST">
         <label>Sélectionner une colonne:</label>
         <select name="column">
-            <?php foreach ($_SESSION['columns'] as $colName): ?>
-                <option value="<?= $colName ?>"><?= $colName ?></option>
+            <?php foreach ($_SESSION['columns'] as $index => $colName): ?>
+                <option value="<?= $index + 1 ?>"><?= htmlspecialchars($colName) ?></option>
             <?php endforeach; ?>
         </select>
         <button type="submit" name="selectColumn">Choisir</button>
     </form>
+
 <?php endif; ?>
 
 <?php if (isset($_SESSION['selectedColumn'])): ?>
