@@ -1,10 +1,46 @@
 <?php
+session_unset();
 session_start();
+
+
 require 'vendor/autoload.php'; // Charger PhpSpreadsheet
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-
+/*
+    'AIzaSyBspjH5sydi8xdNc8E3PpAFMxZpuKVd5mU',
+    'AIzaSyCGI5yxffF571JJfnEYa4nUqwv7jtc5U-8',
+    'AIzaSyC1NrI5fFAzJuPappn-09ybR8zbpILtd4g',
+    'AIzaSyCnuwZF4W5rat_nTKYmmTgjrfUBMMJleTQ',
+    'AIzaSyDilVFvhQhGrHM9XfCbp5DU2Jj9jaTYBJM',
+    'AIzaSyCgbChwWVswQyR1GzXRivurwHlJI40P4qU',
+    'AIzaSyBAk9TSqOVyzBrGgtQFIk8xRsYHD5GfAsc',
+    'AIzaSyB4kSawOzLTiPCqG2ze-CwMU7EJ9P5Gx_E',
+    'AIzaSyBVOFY9-pfxsusK4xvthiiBy8k9UMauE7I',
+    'AIzaSyDpY3eU5ZZU7xJH1pJ00KmFSl0L8ZVsVIw',
+    'AIzaSyBcD2CsB8Zs9mzqCyolEnd9Oi4aldjSpBw',
+    'AIzaSyAxcJZ0He21pQ7EmNdkJlUdVIvGbW_qIAY',
+    'AIzaSyD3zhsG5jwkySqMf09NxPDPBOWCMBIJ0J4',
+    'AIzaSyAYDLXzy-Gwor7uRq-Puo-fOQc-3DnBdwo',
+    'AIzaSyAULYhT2qON9pPIp5wSaUIbrFiyBbqvWZg',
+    'AIzaSyBK_GxZSES8sJt3h0nAouM_s5q5RBbTUJA',
+    'AIzaSyAxB6j6kivDpcUGuwHmgsBnGBzBr0OBpi8',
+*/
+$apiKeys = [
+    'AIzaSyC5ohbFIOe-heuTMRYDUUe_47O0cL496Bg',
+    'AIzaSyCOHhxe7ynM9i0Jm847wlbNZIv6hq9MANA',
+    'AIzaSyBif-0QbsksJ7SZwRv-bJmE8IhHGUgIAcg',
+    'AIzaSyDWG0qT7XvGcqrPA1aBcgfumOdMe7ItvIk'
+];
+// Initialisez le compteur de requêtes si non défini
+if (!isset($_SESSION['requestCount'])) {
+    $_SESSION['requestCount'] = 0;
+}
+function getApiKey() {
+    global $apiKeys;
+    $index = intdiv($_SESSION['requestCount'], 100) % count($apiKeys);
+    return $apiKeys[$index];
+}
 function uploadExcelFile() {
     if (isset($_FILES['excelFile'])) {
         $file = $_FILES['excelFile'];
@@ -39,13 +75,17 @@ function loadExcelColumns($filePath) {
 
 // Appel API pour la recherche d'images
 function searchImages($query) {
-    $apiKey = 'AIzaSyBspjH5sydi8xdNc8E3PpAFMxZpuKVd5mU';//AIzaSyCGI5yxffF571JJfnEYa4nUqwv7jtc5U-8//AIzaSyC1NrI5fFAzJuPappn-09ybR8zbpILtd4g // AIzaSyCnuwZF4W5rat_nTKYmmTgjrfUBMMJleTQ // AIzaSyDilVFvhQhGrHM9XfCbp5DU2Jj9jaTYBJM
+    // Incrémenter le compteur de requêtes
+    $_SESSION['requestCount']++;
+    // Récupérer la clé API actuelle
+    $apiKey = getApiKey();
     $searchEngineId = 'e4aa36cca289940cf';
     $url = "https://www.googleapis.com/customsearch/v1?key=$apiKey&cx=$searchEngineId&q=" . urlencode($query) . "&searchType=image&num=3";
 
     $response = file_get_contents($url);
     $data = json_decode($response, true);
-// Vérifie si des images ont été trouvées
+
+    // Vérifier si des images ont été trouvées
     if (!empty($data['items'])) {
         return array_column($data['items'], 'link'); // Retourne les URLs des images
     } else {
@@ -133,7 +173,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         downloadExcelFile($spreadsheet);
-        session_unset();
     }
 
 
@@ -144,53 +183,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Gestion d'Images Excel</title>
+    <!-- Lien vers Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
 
-<h1>Gestion d'Images pour Fichier Excel</h1>
+<div class="container mt-5">
+    <h1 class="text-center mb-5">Gestion d'Images pour Fichier Excel</h1>
 
-<!-- Formulaire d'importation -->
-<form method="POST" enctype="multipart/form-data">
-    <label>Importer un fichier Excel:</label>
-    <input type="file" name="excelFile" accept=".xlsx,.xls">
-    <button type="submit" name="upload">Importer</button>
-</form>
+    <!-- Formulaire d'importation -->
+    <form method="POST" enctype="multipart/form-data" class="mb-4">
+        <div class="form-group">
+            <label for="excelFile">Importer un fichier Excel:</label>
+            <input type="file" name="excelFile" id="excelFile" accept=".xlsx,.xls" class="form-control-file">
+        </div>
+        <button type="submit" name="upload" class="btn btn-primary">Importer</button>
+    </form>
 
-<?php if (isset($_SESSION['columns'])): ?>
-    <!-- Sélection de colonne -->
-    <form method="POST">
-        <label>Sélectionner une colonne:</label>
-        <select name="column">
-            <?php foreach ($_SESSION['columns'] as $index => $colName): ?>
-                <option value="<?= $index + 1 ?>"><?= htmlspecialchars($colName) ?></option>
+    <?php if (isset($_SESSION['columns'])): ?>
+        <!-- Sélection de colonne -->
+        <form method="POST" class="mb-4">
+            <div class="form-group">
+                <label for="column">Sélectionner une colonne:</label>
+                <select name="column" id="column" class="form-control">
+                    <?php foreach ($_SESSION['columns'] as $index => $colName): ?>
+                        <option value="<?= $index + 1 ?>"><?= htmlspecialchars($colName) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="submit" name="selectColumn" class="btn btn-success">Choisir</button>
+        </form>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['selectedColumn'])): ?>
+        <!-- Recherche d'images -->
+        <form method="POST" class="mb-4">
+            <button type="submit" name="searchImages" class="btn btn-info">Rechercher les images</button>
+        </form>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['images'])): ?>
+        <!-- Sélection des images et téléchargement -->
+        <form method="POST">
+            <?php foreach ($_SESSION['images'] as $value => $images): ?>
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title"><?= htmlspecialchars($value) ?></h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <?php foreach ($images as $url): ?>
+                                <div class="col-4 text-center mb-3">
+                                    <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" value="<?= htmlspecialchars($url) ?>">
+                                    <img src="<?= htmlspecialchars($url) ?>" width="100" class="img-thumbnail">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
             <?php endforeach; ?>
-        </select>
-        <button type="submit" name="selectColumn">Choisir</button>
-    </form>
+            <button type="submit" name="addUrls" class="btn btn-danger">Télécharger le fichier Excel modifié</button>
+        </form>
+    <?php endif; ?>
+</div>
 
-<?php endif; ?>
-
-<?php if (isset($_SESSION['selectedColumn'])): ?>
-    <!-- Recherche d'images -->
-    <form method="POST">
-        <button type="submit" name="searchImages">Rechercher les images</button>
-    </form>
-<?php endif; ?>
-
-<?php if (isset($_SESSION['images'])): ?>
-    <!-- Sélection des images et téléchargement -->
-    <form method="POST">
-        <?php foreach ($_SESSION['images'] as $value => $images): ?>
-            <h3><?= htmlspecialchars($value) ?></h3>
-            <?php foreach ($images as $url): ?>
-                <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" value="<?= htmlspecialchars($url) ?>">
-                <img src="<?= htmlspecialchars($url) ?>" width="100">
-            <?php endforeach; ?>
-        <?php endforeach; ?>
-        <button type="submit" name="addUrls">Télécharger le fichier Excel modifié</button>
-    </form>
-<?php endif; ?>
-
+<!-- Lien vers Bootstrap JS et dépendances -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
