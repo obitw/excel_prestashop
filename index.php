@@ -17,7 +17,6 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
     'AIzaSyCGI5yxffF571JJfnEYa4nUqwv7jtc5U-8',
     'AIzaSyC1NrI5fFAzJuPappn-09ybR8zbpILtd4g',
     'AIzaSyCnuwZF4W5rat_nTKYmmTgjrfUBMMJleTQ',
-
     'AIzaSyDilVFvhQhGrHM9XfCbp5DU2Jj9jaTYBJM',
     'AIzaSyCgbChwWVswQyR1GzXRivurwHlJI40P4qU',
     'AIzaSyBAk9TSqOVyzBrGgtQFIk8xRsYHD5GfAsc',
@@ -35,22 +34,110 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
     'AIzaSyAxB6j6kivDpcUGuwHmgsBnGBzBr0OBpi8',
 */
 $apiKeys = [
+    'AIzaSyC5ohbFIOe-heuTMRYDUUe_47O0cL496Bg',
+    'AIzaSyCOHhxe7ynM9i0Jm847wlbNZIv6hq9MANA',
+    'AIzaSyBif-0QbsksJ7SZwRv-bJmE8IhHGUgIAcg',
+    'AIzaSyDWG0qT7XvGcqrPA1aBcgfumOdMe7ItvIk',
 
+    'AIzaSyBspjH5sydi8xdNc8E3PpAFMxZpuKVd5mU',
+    'AIzaSyCGI5yxffF571JJfnEYa4nUqwv7jtc5U-8',
+    'AIzaSyC1NrI5fFAzJuPappn-09ybR8zbpILtd4g',
+    'AIzaSyCnuwZF4W5rat_nTKYmmTgjrfUBMMJleTQ',
+    'AIzaSyDilVFvhQhGrHM9XfCbp5DU2Jj9jaTYBJM',
+    'AIzaSyCgbChwWVswQyR1GzXRivurwHlJI40P4qU',
+    'AIzaSyBAk9TSqOVyzBrGgtQFIk8xRsYHD5GfAsc',
+    'AIzaSyB4kSawOzLTiPCqG2ze-CwMU7EJ9P5Gx_E',
 
-    'AIzaSyBcD2CsB8Zs9mzqCyolEnd9Oi4aldjSpBw',
-    'AIzaSyAxcJZ0He21pQ7EmNdkJlUdVIvGbW_qIAY',
     'AIzaSyBVOFY9-pfxsusK4xvthiiBy8k9UMauE7I',
     'AIzaSyDpY3eU5ZZU7xJH1pJ00KmFSl0L8ZVsVIw',
+    'AIzaSyBcD2CsB8Zs9mzqCyolEnd9Oi4aldjSpBw',
+    'AIzaSyAxcJZ0He21pQ7EmNdkJlUdVIvGbW_qIAY',
+
+    'AIzaSyD3zhsG5jwkySqMf09NxPDPBOWCMBIJ0J4',
+    'AIzaSyC5ohbFIOe-heuTMRYDUUe_47O0cL496Bg',
+    'AIzaSyCOHhxe7ynM9i0Jm847wlbNZIv6hq9MANA',
+    'AIzaSyBif-0QbsksJ7SZwRv-bJmE8IhHGUgIAcg',
+    'AIzaSyDWG0qT7XvGcqrPA1aBcgfumOdMe7ItvIk'
 ];
+function getBaseUrl() {
+    $ngrokUrl = getNgrokUrl();
+    if ($ngrokUrl) {
+        return $ngrokUrl;
+    }
+
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST']; // Récupère l'hôte (ex: localhost, ngrok, etc.)
+    $scriptName = dirname($_SERVER['SCRIPT_NAME']); // Récupère le chemin de base (si votre script est dans un sous-dossier)
+    $scriptName = rtrim($scriptName, '/'); // Évite les slashs inutiles
+
+    return $protocol . '://' . $host . $scriptName;
+}
+
 // Initialisez le compteur de requêtes si non défini
 if (!isset($_SESSION['requestCount'])) {
     $_SESSION['requestCount'] = 0;
 }
 function getApiKey() {
     global $apiKeys;
-    $index = intdiv($_SESSION['requestCount'], 100) % count($apiKeys);
-    return $apiKeys[$index];
+
+    // Vérifie si une liste de clés désactivées existe dans la session
+    if (!isset($_SESSION['disabledKeys'])) {
+        $_SESSION['disabledKeys'] = [];
+    }
+
+    $activeKeys = array_diff_key($apiKeys, array_flip($_SESSION['disabledKeys']));
+
+    // Si toutes les clés sont désactivées, réinitialise la liste
+    if (empty($activeKeys)) {
+        $_SESSION['disabledKeys'] = [];
+        $activeKeys = $apiKeys;
+    }
+
+    // Détermine l'index de la clé active
+    $index = intdiv($_SESSION['requestCount'], 100) % count($activeKeys);
+    return array_values($activeKeys)[$index];
 }
+
+function uploadCustomImage($file, $productName) {
+    $customDir = __DIR__ . '/uploads/custom/';
+    $proxyDir = __DIR__ . '/uploads/proxy_images/';
+    $localhost = getBaseUrl();
+    $projectName = basename(__DIR__);
+
+    // Créer les répertoires si nécessaire
+    if (!is_dir($customDir)) {
+        mkdir($customDir, 0777, true);
+    }
+    if (!is_dir($proxyDir)) {
+        mkdir($proxyDir, 0777, true);
+    }
+
+    $fileName = uniqid() . '_' . basename($file['name']);
+    $customPath = $customDir . $fileName;
+
+    // Déplacer l'image téléchargée dans le dossier custom
+    if (move_uploaded_file($file['tmp_name'], $customPath)) {
+        // Vérifier si le fichier est une image valide
+        if (!getimagesize($customPath)) {
+            unlink($customPath); // Supprimer le fichier invalide
+            throw new Exception("Le fichier uploadé n'est pas une image valide : {$file['name']}");
+        }
+
+        // Copier l'image dans le répertoire proxy_images
+        $proxyPath = $proxyDir . $fileName;
+        if (!copy($customPath, $proxyPath)) {
+            throw new Exception("Impossible de copier l'image vers le proxy : {$proxyPath}");
+        }
+
+        // Retourner le chemin complet pour l'Excel
+        return $localhost . '/' . $projectName . '/uploads/proxy_images/' . $fileName;
+    }
+
+    throw new Exception("Échec de l'upload de l'image : {$file['name']}");
+}
+
+
+
 function uploadExcelFile() {
     if (isset($_FILES['excelFile'])) {
         $file = $_FILES['excelFile'];
@@ -82,29 +169,156 @@ function loadExcelColumns($filePath) {
 
     return $columns;
 }
+function downloadImage($url, $localDir = 'uploads/proxy_images/') {
+    $localhost = getBaseUrl();
+    $projectName = basename(__DIR__);
+
+    // Vérifie si l'URL correspond à l'image par défaut
+    $defaultImageUrl = createDefaultImage($localDir); // Appel pour obtenir l'URL de l'image par défaut
+    if ($url === $defaultImageUrl) {
+        return $defaultImageUrl; // Retourne directement l'image par défaut
+    }
+
+    $filename = md5($url) . '.' . pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION);
+    $filePath = $localDir . $filename;
+
+    if (!is_dir($localDir)) {
+        mkdir($localDir, 0777, true);
+    }
+
+    if (!file_exists($filePath)) {
+        $contextOptions = [
+            "http" => [
+                "header" => "User-Agent: Mozilla/5.0\r\n",
+            ],
+        ];
+        $context = stream_context_create($contextOptions);
+        $imageData = @file_get_contents($url, false, $context);
+
+        if (!$imageData) {
+            return $defaultImageUrl; // Retourne l'image par défaut en cas d'échec
+        }
+
+        file_put_contents($filePath, $imageData);
+
+        if (!getimagesize($filePath)) {
+            unlink($filePath); // Supprime le fichier corrompu
+            return $defaultImageUrl; // Retourne l'image par défaut
+        }
+    }
+
+    return $localhost . '/' . $projectName . '/' . $filePath;
+}
+
+
+
+
+
+function getNgrokUrl() {
+    $ngrokApiUrl = 'http://127.0.0.1:4040/api/tunnels';
+    $contextOptions = [
+        "http" => [
+            "header" => "User-Agent: PHP-Script\r\n",
+        ],
+    ];
+    $context = stream_context_create($contextOptions);
+
+    $response = @file_get_contents($ngrokApiUrl, false, $context);
+    if ($response) {
+        $data = json_decode($response, true);
+        foreach ($data['tunnels'] as $tunnel) {
+            if ($tunnel['proto'] === 'https') {
+                return $tunnel['public_url'];
+            }
+        }
+    }
+
+    return null;
+}
+
+
+$defaultImageUrl = null;
+
+function createDefaultImage($localDir = 'uploads/proxy_images/', $defaultFilename = 'default.jpg') {
+    global $defaultImageUrl;
+
+    if ($defaultImageUrl) {
+        return $defaultImageUrl; // Retourne l'URL si elle a déjà été générée
+    }
+
+    $localhost = getBaseUrl();
+    $projectName = basename(__DIR__);
+    $filePath = $localDir . $defaultFilename;
+
+    // Créer l'image par défaut si elle n'existe pas
+    if (!file_exists($filePath)) {
+        $defaultImage = imagecreatetruecolor(500, 500);
+        $backgroundColor = imagecolorallocate($defaultImage, 255, 255, 255); // Blanc
+        $textColor = imagecolorallocate($defaultImage, 0, 0, 0); // Noir
+        imagefilledrectangle($defaultImage, 0, 0, 500, 500, $backgroundColor);
+        imagestring($defaultImage, 5, 150, 230, 'No Image', $textColor);
+        imagejpeg($defaultImage, $filePath);
+        imagedestroy($defaultImage);
+    }
+
+    $defaultImageUrl = $localhost . '/' . $projectName . '/' . $filePath;
+    return $defaultImageUrl;
+}
+
+
+
+
+
 
 // Appel API pour la recherche d'images
 function searchImages($query) {
-    // Incrémenter le compteur de requêtes
     $_SESSION['requestCount']++;
-    // Récupérer la clé API actuelle
-    $apiKey = getApiKey();
-    $searchEngineId = 'e4aa36cca289940cf';
-    $url = "https://www.googleapis.com/customsearch/v1?key=$apiKey&cx=$searchEngineId&q=" . urlencode($query) . "&searchType=image&num=9";
+    $maxRetries = count($GLOBALS['apiKeys']); // Nombre maximum de clés disponibles
 
-    $response = file_get_contents($url);
-    $data = json_decode($response, true);
+    for ($retry = 0; $retry < $maxRetries; $retry++) {
+        $apiKey = getApiKey(); // Obtenez une clé active
+        $searchEngineId = 'e4aa36cca289940cf';
+        $url = "https://www.googleapis.com/customsearch/v1?key=$apiKey&cx=$searchEngineId&q=" . urlencode($query) . "&searchType=image&num=9";
 
-    // Vérifier si des images ont été trouvées
-    if (!empty($data['items'])) {
-        return array_column($data['items'], 'link'); // Retourne les URLs des images
-    } elseif($query) {
-        // Retourne l'image par défaut si aucune image n'est trouvée
-        return ['data:image/png;base64,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'];
-    }else{
-        return null;
+        $contextOptions = [
+            "http" => [
+                "header" => "User-Agent: PHP-Script\r\n",
+            ],
+        ];
+        $context = stream_context_create($contextOptions);
+
+        $response = @file_get_contents($url, false, $context);
+
+        if ($response !== false) {
+            $data = json_decode($response, true);
+
+            if (isset($data['error']['code']) && $data['error']['code'] == 429) {
+                $_SESSION['disabledKeys'][] = array_search($apiKey, $GLOBALS['apiKeys']);
+                continue;
+            }
+
+            // Conservez uniquement les URLs sans téléchargement
+            $imageUrls = [];
+            if (!empty($data['items'])) {
+                foreach ($data['items'] as $item) {
+                    $imageUrls[] = $item['link'];
+                }
+            }
+
+            return $imageUrls;
+        } else {
+            $_SESSION['disabledKeys'][] = array_search($apiKey, $GLOBALS['apiKeys']);
+        }
     }
+
+    return [createDefaultImage()]; // Retourne une liste vide si aucune image n'est trouvée
 }
+
+
+
+
+
+
 
 
 // Télécharger le fichier Excel modifié
@@ -117,76 +331,58 @@ function downloadExcelFile($spreadsheet) {
     $writer->save('php://output');
     exit;
 }
-// Fonction pour redimensionner l'image et l'encoder en base64
-function resizeAndEncodeBase64($filePath, $maxWidth, $maxHeight) {
-    list($width, $height) = getimagesize($filePath);
-
-    // Calculer le ratio pour redimensionner tout en conservant les proportions
-    $ratio = min($maxWidth / $width, $maxHeight / $height);
-    $newWidth = (int)($width * $ratio);
-    $newHeight = (int)($height * $ratio);
-
-    // Créer une nouvelle image vide pour la version redimensionnée
-    $image = imagecreatetruecolor($newWidth, $newHeight);
-
-    // Charger l'image d'origine
-    $source = imagecreatefromjpeg($filePath); // Utilisez imagecreatefrompng() si l'image est un PNG
-
-    // Copier et redimensionner l'image d'origine vers la nouvelle image
-    imagecopyresampled($image, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-
-    // Capturer la sortie de l'image redimensionnée en mémoire
-    ob_start();
-    imagejpeg($image, null, 75); // Réduire la qualité à 75 pour compresser davantage
-    $data = ob_get_clean();
-
-    // Libérer la mémoire
-    imagedestroy($image);
-    imagedestroy($source);
-
-    // Retourner l'image encodée en base64
-    return 'data:image/jpeg;base64,' . base64_encode($data);
-}
 
 // Traitement des images personnalisées avec redimensionnement
 if (isset($_FILES['customImage'])) {
     foreach ($_FILES['customImage']['tmp_name'] as $productName => $tmpFilePath) {
         if (is_uploaded_file($tmpFilePath)) {
-            // Redimensionner et encoder l'image en base64
-            $base64Image = resizeAndEncodeBase64($tmpFilePath, 500, 500); // Limite de 500x500 pixels
+            if (isset($_FILES['customImage'][$productName])) {
+                $imageUrl = uploadCustomImage($_FILES['customImage'][$productName], $productName);
+                if ($imageUrl) {
+                    // Enregistrer l'URL dans la session pour usage ultérieur
+                    $_SESSION['customImages'][$productName] = $imageUrl;
+                }
+            } else {
+                // Gestion du cas où l'image n'est pas présente
+                error_log("Aucune image uploadée pour le produit : $productName");
+            }
 
-            // Enregistrer l'URL en base64 redimensionnée dans la session
-            $_SESSION['customImages'][$productName] = $base64Image;
+
         }
     }
 }
+
 
 // Ajouter les URLs dans le fichier Excel
 if (isset($_POST['addUrls'])) {
     $spreadsheet = IOFactory::load($_SESSION['filePath']);
     $sheet = $spreadsheet->getActiveSheet();
 
-    // Définir la nouvelle colonne pour les URLs
+    // Déterminez la nouvelle colonne pour les URLs
     $highestColumn = $sheet->getHighestColumn();
     $newColumnIndex = Coordinate::columnIndexFromString($highestColumn) + 1;
     $newColumnLetter = Coordinate::stringFromColumnIndex($newColumnIndex);
+
+    // Ajoutez le titre de colonne pour les URLs
     $sheet->setCellValue("{$newColumnLetter}1", "Image URL");
 
     $selectedColumnLetter = Coordinate::stringFromColumnIndex($_SESSION['selectedColumn']);
     $rowCount = $sheet->getHighestRow();
 
-    foreach ($_POST['selectedImage'] as $value => $selectedUrl) {
-        // Vérifier si une image personnalisée est disponible et l'utiliser si c'est le cas
-        $isCustomImage = isset($_SESSION['customImages'][$value]) && !empty($_SESSION['customImages'][$value]);
-        $imageUrl = $isCustomImage ? $_SESSION['customImages'][$value] : $selectedUrl;
-
+    foreach ($_POST['selectedImage'] as $value => $imageUrl) {
         for ($row = 2; $row <= $rowCount; $row++) {
             $cellReference = $selectedColumnLetter . $row;
             $cellValue = $sheet->getCell($cellReference)->getValue();
 
             if ($cellValue === $value) {
                 $newCellReference = "{$newColumnLetter}{$row}";
-                $sheet->setCellValueExplicit($newCellReference, $imageUrl, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+                // Téléchargez l'image au moment de l'ajout dans l'Excel
+                try {
+                    $localPath = downloadImage($imageUrl);
+                    $sheet->setCellValue($newCellReference, $localPath);
+                } catch (Exception $e) {
+                }
                 break;
             }
         }
@@ -194,6 +390,11 @@ if (isset($_POST['addUrls'])) {
 
     downloadExcelFile($spreadsheet);
 }
+
+
+
+
+
 
 // Traitement des différentes étapes
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -363,7 +564,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="card-body">
                         <div class="row">
                             <!-- Afficher les 3 premières images seulement -->
-                            <?php foreach (array_slice($images, 0, 3) as $index => $url): ?>
+                            <?php
+                            if (empty($images)) {
+                                $images = [createDefaultImage()];
+                            }
+                            foreach (array_slice($images, 0, 3) as $index => $url): ?>
                                 <div class="col-4 text-center mb-3">
                                     <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" value="<?= htmlspecialchars($url) ?>" <?= $index === 0 ? 'checked' : '' ?>>
                                     <img src="<?= htmlspecialchars($url) ?>" width="100" class="img-thumbnail">
@@ -384,19 +589,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <!-- Bouton pour afficher les 10 images supplémentaires -->
                         <button type="button" class="btn btn-secondary show-more" onclick="showMoreImages(this)">Voir plus</button>
 
-                        <!-- Champ pour ajouter une image personnalisée -->
+                        <!-- Field for adding a custom image -->
                         <div class="mt-3">
                             <label for="customImage_<?= htmlspecialchars($value) ?>">Ajouter une image personnalisée :</label>
-                            <input type="file" name="customImage[<?= htmlspecialchars($value) ?>]" id="customImage_<?= htmlspecialchars($value) ?>" accept="image/*" class="form-control-file" onchange="previewCustomImage(this, '<?= htmlspecialchars($value) ?>')">
+                            <input
+                                    type="file"
+                                    name="customImage[<?= htmlspecialchars($value) ?>]"
+                                    id="customImage_<?= htmlspecialchars($value) ?>"
+                                    accept="image/*"
+                                    class="form-control-file"
+                                    onchange="previewCustomImage(this, '<?= htmlspecialchars($value) ?>')"
+                            >
                         </div>
 
-                        <!-- Conteneur pour l'aperçu de l'image personnalisée -->
+                        <!-- Container for the custom image preview -->
                         <div class="custom-image-preview mt-3" id="customPreview_<?= htmlspecialchars($value) ?>" style="display: none;">
                             <div class="col-4 text-center mb-3">
-                                <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" id="customRadio_<?= htmlspecialchars($value) ?>" value="">
-                                <img src="" id="customImagePreview_<?= htmlspecialchars($value) ?>" width="100" class="img-thumbnail">
+                                <input
+                                        type="radio"
+                                        name="selectedImage[<?= htmlspecialchars($value) ?>]"
+                                        id="customRadio_<?= htmlspecialchars($value) ?>"
+                                        value=""
+                                >
+                                <img
+                                        src=""
+                                        id="customImagePreview_<?= htmlspecialchars($value) ?>"
+                                        width="100"
+                                        class="img-thumbnail"
+                                >
                             </div>
                         </div>
+
                     </div>
                 </div>
             <?php endforeach; ?>
@@ -416,14 +639,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         function previewCustomImage(input, productId) {
             const file = input.files[0];
             if (file) {
-                // Vérifie si le type de fichier est JPEG ou JPG
-                const fileType = file.type;
-                if (fileType !== 'image/jpeg' && fileType !== 'image/jpg') {
-                    alert("Erreur : Seuls les fichiers JPEG ou JPG sont autorisés.");
-                    input.value = ""; // Réinitialise le champ de fichier
-                    return;
-                }
-
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const img = new Image();
@@ -433,16 +648,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         const customRadio = document.getElementById('customRadio_' + productId);
 
                         customImagePreview.src = e.target.result;
-                        customRadio.value = e.target.result;
+                        customRadio.value = `/uploads/proxy_images/${file.name}`; // Chemin prévu pour proxy_images
                         customPreview.style.display = 'block';
 
-                        document.getElementById('hiddenCustomImage_' + productId).value = e.target.result;
+                        // Envoyer l'image au serveur pour la copier dans proxy_images
+                        const formData = new FormData();
+                        formData.append('customImage', file);
+                        formData.append('productName', productId);
+
+                        fetch('upload_proxy_image.php', {
+                            method: 'POST',
+                            body: formData
+                        })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    console.log('Image copiée dans proxy_images avec succès.');
+                                    customRadio.value = data.imageUrl; // Mettre à jour la valeur du bouton radio
+                                } else {
+                                    console.error('Erreur lors de la copie de l\'image:', data.error);
+                                }
+                            })
+                            .catch(error => console.error('Erreur AJAX:', error));
                     };
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
         }
+
+
+
 
 
 
