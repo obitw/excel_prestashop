@@ -1,6 +1,7 @@
 <?php
 session_unset();
 session_start();
+ini_set('max_execution_time', 0); // 0 signifie pas de limite
 
 
 require 'vendor/autoload.php'; // Charger PhpSpreadsheet
@@ -70,7 +71,7 @@ function getBaseUrl() {
     $scriptName = dirname($_SERVER['SCRIPT_NAME']); // Récupère le chemin de base (si votre script est dans un sous-dossier)
     $scriptName = rtrim($scriptName, '/'); // Évite les slashs inutiles
 
-    return $protocol . '://' . $host . $scriptName;
+    return $protocol . '://' . $host;
 }
 
 // Initialisez le compteur de requêtes si non défini
@@ -201,10 +202,7 @@ function downloadImage($url, $localDir = 'uploads/proxy_images/') {
 
         file_put_contents($filePath, $imageData);
 
-        if (!getimagesize($filePath)) {
-            unlink($filePath); // Supprime le fichier corrompu
-            return $defaultImageUrl; // Retourne l'image par défaut
-        }
+
     }
 
     return $localhost . '/' . $projectName . '/' . $filePath;
@@ -323,14 +321,19 @@ function searchImages($query) {
 
 // Télécharger le fichier Excel modifié
 function downloadExcelFile($spreadsheet) {
+    $filePath = __DIR__ . '/updated_file.xls';
+    $writer = IOFactory::createWriter($spreadsheet, 'Xls');
+    $writer->save($filePath); // Enregistre le fichier localement
+
+    error_log("Fichier Excel modifié enregistré à : $filePath"); // Debug
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment;filename="updated_file.xls"');
     header('Cache-Control: max-age=0');
 
-    $writer = IOFactory::createWriter($spreadsheet, 'Xls');
     $writer->save('php://output');
     exit;
 }
+
 
 // Traitement des images personnalisées avec redimensionnement
 if (isset($_FILES['customImage'])) {
@@ -353,43 +356,7 @@ if (isset($_FILES['customImage'])) {
 }
 
 
-// Ajouter les URLs dans le fichier Excel
-if (isset($_POST['addUrls'])) {
-    $spreadsheet = IOFactory::load($_SESSION['filePath']);
-    $sheet = $spreadsheet->getActiveSheet();
 
-    // Déterminez la nouvelle colonne pour les URLs
-    $highestColumn = $sheet->getHighestColumn();
-    $newColumnIndex = Coordinate::columnIndexFromString($highestColumn) + 1;
-    $newColumnLetter = Coordinate::stringFromColumnIndex($newColumnIndex);
-
-    // Ajoutez le titre de colonne pour les URLs
-    $sheet->setCellValue("{$newColumnLetter}1", "Image URL");
-
-    $selectedColumnLetter = Coordinate::stringFromColumnIndex($_SESSION['selectedColumn']);
-    $rowCount = $sheet->getHighestRow();
-
-    foreach ($_POST['selectedImage'] as $value => $imageUrl) {
-        for ($row = 2; $row <= $rowCount; $row++) {
-            $cellReference = $selectedColumnLetter . $row;
-            $cellValue = $sheet->getCell($cellReference)->getValue();
-
-            if ($cellValue === $value) {
-                $newCellReference = "{$newColumnLetter}{$row}";
-
-                // Téléchargez l'image au moment de l'ajout dans l'Excel
-                try {
-                    $localPath = downloadImage($imageUrl);
-                    $sheet->setCellValue($newCellReference, $localPath);
-                } catch (Exception $e) {
-                }
-                break;
-            }
-        }
-    }
-
-    downloadExcelFile($spreadsheet);
-}
 
 
 
@@ -475,34 +442,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $spreadsheet = IOFactory::load($_SESSION['filePath']);
         $sheet = $spreadsheet->getActiveSheet();
 
-        // Determine the new column letter for URLs
+        // Déterminez les nouvelles colonnes pour les URLs et les poids
         $highestColumn = $sheet->getHighestColumn();
         $newColumnIndex = Coordinate::columnIndexFromString($highestColumn) + 1;
-        $newColumnLetter = Coordinate::stringFromColumnIndex($newColumnIndex);
+        $urlColumnLetter = Coordinate::stringFromColumnIndex($newColumnIndex);
+        $weightColumnLetter = Coordinate::stringFromColumnIndex($newColumnIndex + 1);
 
-        // Add "Image URL" as the header for the new column
-        $sheet->setCellValue("{$newColumnLetter}1", "Image URL");
+        // Ajoutez les titres des nouvelles colonnes
+        $sheet->setCellValue("{$urlColumnLetter}1", "Image URL");
+        $sheet->setCellValue("{$weightColumnLetter}1", "Poids (kg)");
 
-        // Loop through rows to add selected URLs
+        // Ajoutez les URLs et les poids pour chaque produit
         $selectedColumnLetter = Coordinate::stringFromColumnIndex($_SESSION['selectedColumn']);
         $rowCount = $sheet->getHighestRow();
 
-        foreach ($_POST['selectedImage'] as $value => $selectedUrl) {
-            for ($row = 2; $row <= $rowCount; $row++) {
-                $cellReference = $selectedColumnLetter . $row;
-                $cellValue = $sheet->getCell($cellReference)->getValue();
+        for ($row = 2; $row <= $rowCount; $row++) {
+            $cellValue = trim($sheet->getCell("{$selectedColumnLetter}{$row}")->getValue());
 
-                // If the cell value matches, add the selected image URL in the new column
-                if ($cellValue === $value) {
-                    $newCellReference = "{$newColumnLetter}{$row}";
-                    $sheet->setCellValue($newCellReference, $selectedUrl);
-                    break;
-                }
+            if (empty($cellValue)) {
+                error_log("Ligne $row : Ignorée (valeur vide)");
+                continue;
             }
+
+            // Encode la clé pour correspondre au formulaire
+            $encodedKey = base64_encode($cellValue);
+
+            // Récupérer l'image sélectionnée ou une image par défaut
+            $selectedUrl = $_POST['selectedImage'][$encodedKey] ?? createDefaultImage();
+
+            if (!filter_var($selectedUrl, FILTER_VALIDATE_URL)) {
+                error_log("Ligne $row : URL invalide pour $cellValue");
+                $selectedUrl = createDefaultImage();
+            }
+
+            try {
+                $localPath = downloadImage($selectedUrl);
+                $sheet->setCellValue("{$urlColumnLetter}{$row}", $localPath);
+            } catch (Exception $e) {
+                error_log("Ligne $row : Erreur de téléchargement pour $cellValue - " . $e->getMessage());
+                $sheet->setCellValue("{$urlColumnLetter}{$row}", "Erreur téléchargement");
+            }
+
+            // Récupérer le poids ou appliquer une valeur par défaut
+            $weight = $_POST['weight'][$encodedKey] ?? 5; // Poids par défaut : 5 kg
+            $sheet->setCellValue("{$weightColumnLetter}{$row}", $weight);
         }
 
         downloadExcelFile($spreadsheet);
     }
+
+
+    /*
+
+    */
 
 
 }
@@ -546,17 +538,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
     <?php endif; ?>
 
-    <?php if (isset($_SESSION['selectedColumn'])): ?>
-        <!-- Recherche d'images -->
-        <form method="POST" class="mb-4">
-            <button type="submit" name="searchImages" class="btn btn-info">Rechercher les images</button>
-        </form>
-    <?php endif; ?>
-
     <?php if (isset($_SESSION['images'])): ?>
         <!-- Formulaire pour sélectionner les images et télécharger le fichier Excel -->
         <form method="POST" enctype="multipart/form-data">
             <?php foreach ($_SESSION['images'] as $value => $images): ?>
+                <?php $encodedValue = base64_encode($value); // Encodage de la clé ?>
                 <div class="card mb-4">
                     <div class="card-header">
                         <h5 class="card-title"><?= htmlspecialchars($value) ?></h5>
@@ -570,7 +556,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             foreach (array_slice($images, 0, 3) as $index => $url): ?>
                                 <div class="col-4 text-center mb-3">
-                                    <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" value="<?= htmlspecialchars($url) ?>" <?= $index === 0 ? 'checked' : '' ?>>
+                                    <input
+                                            type="radio"
+                                            name="selectedImage[<?= $encodedValue ?>]"
+                                            value="<?= htmlspecialchars($url) ?>"
+                                        <?= $index === 0 ? 'checked' : '' ?>
+                                    >
                                     <img src="<?= htmlspecialchars($url) ?>" width="100" class="img-thumbnail">
                                 </div>
                             <?php endforeach; ?>
@@ -580,46 +571,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="row additional-images" style="display: none;">
                             <?php foreach (array_slice($images, 3, 10) as $url): ?>
                                 <div class="col-4 text-center mb-3">
-                                    <input type="radio" name="selectedImage[<?= htmlspecialchars($value) ?>]" value="<?= htmlspecialchars($url) ?>">
+                                    <input
+                                            type="radio"
+                                            name="selectedImage[<?= $encodedValue ?>]"
+                                            value="<?= htmlspecialchars($url) ?>"
+                                    >
                                     <img src="<?= htmlspecialchars($url) ?>" width="100" class="img-thumbnail">
                                 </div>
                             <?php endforeach; ?>
                         </div>
-
                         <!-- Bouton pour afficher les 10 images supplémentaires -->
                         <button type="button" class="btn btn-secondary show-more" onclick="showMoreImages(this)">Voir plus</button>
 
-                        <!-- Field for adding a custom image -->
+                        <!-- Ajout d'une image personnalisée -->
                         <div class="mt-3">
-                            <label for="customImage_<?= htmlspecialchars($value) ?>">Ajouter une image personnalisée :</label>
+                            <label for="customImage_<?= $encodedValue ?>">Ajouter une image personnalisée :</label>
                             <input
                                     type="file"
-                                    name="customImage[<?= htmlspecialchars($value) ?>]"
-                                    id="customImage_<?= htmlspecialchars($value) ?>"
+                                    name="customImage[<?= $encodedValue ?>]"
+                                    id="customImage_<?= $encodedValue ?>"
                                     accept="image/*"
                                     class="form-control-file"
-                                    onchange="previewCustomImage(this, '<?= htmlspecialchars($value) ?>')"
+                                    onchange="previewCustomImage(this, '<?= $encodedValue ?>')"
                             >
                         </div>
 
-                        <!-- Container for the custom image preview -->
-                        <div class="custom-image-preview mt-3" id="customPreview_<?= htmlspecialchars($value) ?>" style="display: none;">
+                        <!-- Conteneur pour l'aperçu de l'image personnalisée -->
+                        <div class="custom-image-preview mt-3" id="customPreview_<?= $encodedValue ?>" style="display: none;">
                             <div class="col-4 text-center mb-3">
                                 <input
                                         type="radio"
-                                        name="selectedImage[<?= htmlspecialchars($value) ?>]"
-                                        id="customRadio_<?= htmlspecialchars($value) ?>"
+                                        name="selectedImage[<?= $encodedValue ?>]"
+                                        id="customRadio_<?= $encodedValue ?>"
                                         value=""
                                 >
                                 <img
                                         src=""
-                                        id="customImagePreview_<?= htmlspecialchars($value) ?>"
+                                        id="customImagePreview_<?= $encodedValue ?>"
                                         width="100"
                                         class="img-thumbnail"
                                 >
                             </div>
                         </div>
 
+                        <!-- Poids -->
+                        <div class="form-group mt-3">
+                            <label for="weight_<?= $encodedValue ?>">Poids (en kg) :</label>
+                            <input
+                                    type="number"
+                                    name="weight[<?= $encodedValue ?>]"
+                                    id="weight_<?= $encodedValue ?>"
+                                    class="form-control"
+                                    placeholder="Entrez un poids en kg"
+                                    step="0.01"
+                                    min="0"
+                                    value="5"
+                            >
+                        </div>
                     </div>
                 </div>
             <?php endforeach; ?>
@@ -636,16 +644,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Fonction pour prévisualiser l'image personnalisée
-        function previewCustomImage(input, productId) {
+        function previewCustomImage(input, encodedValue) {
             const file = input.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const img = new Image();
                     img.onload = function() {
-                        const customPreview = document.getElementById('customPreview_' + productId);
-                        const customImagePreview = document.getElementById('customImagePreview_' + productId);
-                        const customRadio = document.getElementById('customRadio_' + productId);
+                        const customPreview = document.getElementById('customPreview_' + encodedValue);
+                        const customImagePreview = document.getElementById('customImagePreview_' + encodedValue);
+                        const customRadio = document.getElementById('customRadio_' + encodedValue);
 
                         customImagePreview.src = e.target.result;
                         customRadio.value = `/uploads/proxy_images/${file.name}`; // Chemin prévu pour proxy_images
@@ -654,7 +662,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Envoyer l'image au serveur pour la copier dans proxy_images
                         const formData = new FormData();
                         formData.append('customImage', file);
-                        formData.append('productName', productId);
+                        formData.append('productName', encodedValue);
 
                         fetch('upload_proxy_image.php', {
                             method: 'POST',
@@ -676,15 +684,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 reader.readAsDataURL(file);
             }
         }
-
-
-
-
-
-
     </script>
-
-
 
 </div>
 
@@ -694,3 +694,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
+

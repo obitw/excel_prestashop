@@ -44,19 +44,21 @@ if (!is_dir($proxyDir)) {
 
 if (isset($_FILES['customImage']) && isset($_POST['productName'])) {
     $file = $_FILES['customImage'];
-    $fileName = basename($file['name']);
+    $productName = base64_decode($_POST['productName']); // Décodage de la clé du produit
+    $fileName = uniqid() . '_' . basename($file['name']);
     $proxyPath = $proxyDir . $fileName;
 
     // Déplacer le fichier vers le répertoire proxy_images
     if (move_uploaded_file($file['tmp_name'], $proxyPath)) {
-        $imageUrl = $localhost . '/' . $projectName . '/uploads/proxy_images/' . $fileName;
-        echo json_encode(['success' => true, 'imageUrl' => $imageUrl]);
+        $imageUrl = $localhost . '/uploads/proxy_images/' . $fileName;
+        echo json_encode(['success' => true, 'imageUrl' => $imageUrl, 'productName' => $productName]);
         exit;
     } else {
         echo json_encode(['success' => false, 'error' => 'Échec de la copie de l\'image.']);
         exit;
     }
 }
+
 
 echo json_encode(['success' => false, 'error' => 'Aucun fichier reçu ou données manquantes.']);
 exit;
