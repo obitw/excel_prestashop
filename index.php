@@ -2,7 +2,7 @@
 session_unset();
 session_start();
 ini_set('max_execution_time', 0); // 0 signifie pas de limite
-
+ini_set('memory_limit', '512M');
 
 require 'vendor/autoload.php'; // Charger PhpSpreadsheet
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -175,19 +175,21 @@ function downloadImage($url, $localDir = 'uploads/proxy_images/') {
     $projectName = basename(__DIR__);
 
     // Vérifie si l'URL correspond à l'image par défaut
-    $defaultImageUrl = createDefaultImage($localDir); // Appel pour obtenir l'URL de l'image par défaut
+    $defaultImageUrl = createDefaultImage($localDir);
     if ($url === $defaultImageUrl) {
-        return $defaultImageUrl; // Retourne directement l'image par défaut
+        return $defaultImageUrl;
     }
 
-    $filename = md5($url) . '.' . pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION);
-    $filePath = $localDir . $filename;
+    $fileExtension = strtolower(pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+    $filename = md5($url);
+    $tempFilePath = $localDir . $filename . '.' . $fileExtension;
+    $finalFilePath = $localDir . $filename . '.jpg'; // Conversion finale en JPG
 
     if (!is_dir($localDir)) {
         mkdir($localDir, 0777, true);
     }
 
-    if (!file_exists($filePath)) {
+    if (!file_exists($finalFilePath)) {
         $contextOptions = [
             "http" => [
                 "header" => "User-Agent: Mozilla/5.0\r\n",
@@ -197,16 +199,91 @@ function downloadImage($url, $localDir = 'uploads/proxy_images/') {
         $imageData = @file_get_contents($url, false, $context);
 
         if (!$imageData) {
+            error_log("Erreur : Impossible de télécharger l'image depuis l'URL : $url");
             return $defaultImageUrl; // Retourne l'image par défaut en cas d'échec
         }
 
-        file_put_contents($filePath, $imageData);
+        // Sauvegarde temporaire de l'image téléchargée
+        file_put_contents($tempFilePath, $imageData);
 
+        // Vérifie si le fichier est en WebP et tente plusieurs conversions
+        if ($fileExtension === 'webp') {
+            $converted = convertWebPToJPG($tempFilePath, $finalFilePath);
+            unlink($tempFilePath); // Supprime le fichier temporaire WebP
+            if (!$converted) {
+                return $defaultImageUrl; // Retourne une image par défaut en cas d'échec
+            }
+        }
+        else {
+            // Si ce n'est pas un WebP, on garde le fichier d'origine
+            rename($tempFilePath, $finalFilePath);
+        }
 
+        // Vérifie que le fichier final est une image valide
+        if (!getimagesize($finalFilePath)) {
+            unlink($finalFilePath); // Supprime le fichier corrompu
+            return $defaultImageUrl;
+        }
     }
 
-    return $localhost . '/' . $projectName . '/' . $filePath;
+    return $localhost . '/' . $projectName . '/' . $finalFilePath;
 }
+
+/**
+ * Tente de convertir une image WebP en JPG en utilisant GD, Imagick ou FFmpeg.
+ *
+ * @param string $webpFilePath Chemin du fichier WebP source
+ * @param string $jpgFilePath Chemin du fichier JPG cible
+ * @return bool Retourne true si la conversion a réussi, false sinon
+ */
+function convertWebPToJPG($webpFilePath, $jpgFilePath) {
+    // Essayer d'abord avec GD
+    if (function_exists('imagecreatefromwebp')) {
+        try {
+            $image = @imagecreatefromwebp($webpFilePath);
+            if ($image) {
+                imagejpeg($image, $jpgFilePath, 100);
+                imagedestroy($image);
+                return true; // Conversion réussie avec GD
+            } else {
+                throw new Exception("Erreur GD : Impossible de lire le fichier WebP");
+            }
+        } catch (Exception $e) {
+            error_log($e->getMessage());
+        }
+    }
+
+    // Essayer avec Imagick
+    if (class_exists('Imagick')) {
+        try {
+            $imagick = new Imagick($webpFilePath);
+            $imagick->setImageFormat('jpeg');
+            $imagick->writeImage($jpgFilePath);
+            $imagick->clear();
+            $imagick->destroy();
+            return true; // Conversion réussie avec Imagick
+        } catch (Exception $e) {
+            error_log("Erreur Imagick : " . $e->getMessage());
+        }
+    }
+
+    // Essayer avec FFmpeg
+    $ffmpegPath = shell_exec('which ffmpeg') ?: 'ffmpeg'; // Vérifie si FFmpeg est dans le PATH
+    if ($ffmpegPath) {
+        $command = "$ffmpegPath -i " . escapeshellarg($webpFilePath) . " " . escapeshellarg($jpgFilePath);
+        exec($command, $output, $returnVar);
+        if ($returnVar === 0) {
+            return true; // Conversion réussie avec FFmpeg
+        } else {
+            error_log("Erreur FFmpeg : Échec de la conversion WebP -> JPG");
+        }
+    }
+
+    // Si toutes les méthodes échouent
+    error_log("Erreur : Aucune méthode n'a pu convertir le fichier WebP.");
+    return false; // Conversion échouée
+}
+
 
 
 
@@ -311,10 +388,6 @@ function searchImages($query) {
 
     return [createDefaultImage()]; // Retourne une liste vide si aucune image n'est trouvée
 }
-
-
-
-
 
 
 
@@ -535,6 +608,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </select>
             </div>
             <button type="submit" name="selectColumn" class="btn btn-success">Choisir</button>
+        </form>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['selectedColumn'])): ?>
+        <!-- Recherche d'images -->
+        <form method="POST" class="mb-4">
+            <button type="submit" name="searchImages" class="btn btn-info">Rechercher les images</button>
         </form>
     <?php endif; ?>
 
