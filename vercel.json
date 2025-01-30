@@ -1,0 +1,26 @@
+
+{
+  "builds": [
+    {
+      "src": "index.php",
+      "use": "@vercel/php",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    }
+  ],
+  "build": {
+    "env": {
+      "COMPOSER_HOME": "/tmp"
+    },
+    "commands": [
+      "composer install --no-dev"
+    ]
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.php"
+    }
+  ]
+}
