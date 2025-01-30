@@ -1,4 +1,5 @@
 <?php
+
 session_unset();
 session_start();
 ini_set('max_execution_time', 0); // 0 signifie pas de limite
@@ -8,6 +9,7 @@ require 'vendor/autoload.php'; // Charger PhpSpreadsheet
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+
 /*
     'AIzaSyC5ohbFIOe-heuTMRYDUUe_47O0cL496Bg',
     'AIzaSyCOHhxe7ynM9i0Jm847wlbNZIv6hq9MANA',
@@ -206,7 +208,7 @@ function downloadImage($url, $localDir = 'uploads/proxy_images/') {
         // Sauvegarde temporaire de l'image téléchargée
         file_put_contents($tempFilePath, $imageData);
 
-        // Vérifie si le fichier est en WebP et tente plusieurs conversions
+//         Vérifie si le fichier est en WebP et tente plusieurs conversions
         if ($fileExtension === 'webp') {
             $converted = convertWebPToJPG($tempFilePath, $finalFilePath);
             unlink($tempFilePath); // Supprime le fichier temporaire WebP
@@ -218,6 +220,7 @@ function downloadImage($url, $localDir = 'uploads/proxy_images/') {
             // Si ce n'est pas un WebP, on garde le fichier d'origine
             rename($tempFilePath, $finalFilePath);
         }
+
 
         // Vérifie que le fichier final est une image valide
         if (!getimagesize($finalFilePath)) {
